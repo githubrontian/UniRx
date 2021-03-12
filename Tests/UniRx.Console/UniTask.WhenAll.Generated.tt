@@ -13,7 +13,7 @@
     Func<int, string> BuildTupleType = x => "(" + string.Join(", ", Enumerable.Range(1, x).Select(y => $"T{y}")) + ")";
     Func<int, string> BuildTupleResult = x => "(" + string.Join(", ", Enumerable.Range(1, x).Select(y => $"parent.result{y}")) + ")";
 #>
-#if CSHARP_7_OR_LATER
+#if CSHARP_7_OR_LATER || (UNITY_2018_3_OR_NEWER && (NET_STANDARD_2_0 || NET_4_6))
 #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
 
 using System;
@@ -54,7 +54,7 @@ namespace UniRx.Async
                 this.exception = null;
 
 <# for(var j = 1; j <= i; j++) { #>
-                RunTask<#= j #>(task<#= j #>).Forget();
+                RunTask<#= j #>(task<#= j #>);
 <# } #>
             }
 
@@ -68,7 +68,34 @@ namespace UniRx.Async
             }
 
 <# for(var j = 1; j <= i; j++) { #>
-            async UniTaskVoid RunTask<#= j #>(UniTask<T<#= j #>> task)
+            void RunTask<#= j #>(UniTask<T<#= j #>> task)
+            {
+                if (task.IsCompleted)
+                {
+                    try
+                    {
+                        result<#= j #> = task.Result;
+                    }
+                    catch (Exception ex)
+                    {
+                        exception = ExceptionDispatchInfo.Capture(ex);
+                        TryCallContinuation();
+                        return;
+                    }
+
+                    var count = Interlocked.Increment(ref completeCount);
+                    if (count == MaxCount)
+                    {
+                        TryCallContinuation();
+                    }
+                }
+                else
+                {
+                    RunTask<#= j #>Async(task).Forget();
+                }
+            }
+
+            async UniTaskVoid RunTask<#= j #>Async(UniTask<T<#= j #>> task)
             {
                 try
                 {
